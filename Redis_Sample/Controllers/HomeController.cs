@@ -1,32 +1,51 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Distributed;
+using Newtonsoft.Json;
 using Redis_Sample.Models;
-using System.Diagnostics;
 
 namespace Redis_Sample.Controllers
 {
     public class HomeController : Controller
     {
-        private readonly ILogger<HomeController> _logger;
-
-        public HomeController(ILogger<HomeController> logger)
+        private IDistributedCache _distributedCache; //DI
+        public HomeController(IDistributedCache distributedCache)
         {
-            _logger = logger;
+            _distributedCache = distributedCache;
         }
 
-        public IActionResult Index()
+        public async Task<ActionResult> SaveRedisCache() // /Home/SaveRedisCache
         {
+            var dashboardData = new DashBoardData
+            {
+                TopSelllingCountryName = "Turkey",
+                TopSelllingProductName = "Laptop",
+                TotalCustomerCount = 2310,
+                TotalRevenue = 43450
+            };
+
+            var tomorrow = DateTime.Now.AddDays(1);
+            var totalSecs = tomorrow.Subtract(DateTime.Now).TotalSeconds;
+
+            var distributedCacheEntryOptions = new DistributedCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(totalSecs),
+                SlidingExpiration = null,
+
+            };
+
+            var jsonData= JsonConvert.SerializeObject(dashboardData);
+            await _distributedCache.SetStringAsync("DashBoardData", jsonData, distributedCacheEntryOptions);
+
             return View();
         }
 
-        public IActionResult Privacy()
+        public async Task<ActionResult> Dashboard() // /Home/Dashboard
         {
-            return View();
-        }
+            var jsonData = await _distributedCache.GetStringAsync("DashBoardData");
+            var dashboarData = JsonConvert.DeserializeObject<DashBoardData>(jsonData);
+            ViewBag.DashboardData = dashboarData;
 
-        [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
-        public IActionResult Error()
-        {
-            return View(new ErrorViewModel { RequestId = Activity.Current?.Id ?? HttpContext.TraceIdentifier });
+            return View();
         }
     }
 }
